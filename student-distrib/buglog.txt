@@ -1,0 +1,101 @@
+CHECKPOINT 1 BUGS
+
+bug: system receives 0x20 interrupt after implementing IDT, PIC with mask 0xFB on master PIC, and uncommenting sti() in kernel.c
+solution: PIC mask got reset after initilization, so need to set the mask again after initilization.
+
+bug: RTC can only generate one interrupt
+solution: RTC is on IRQ8, which is on the slave PIC. The problem was that we were sending EOI to the incorrect port on master PIC, 
+    which should be IRQ2, where slave PIC is connected to. 
+
+bug: keyboard displays character on press and release
+solution: use bounds checking on scancodes
+
+bug: page fault exception test not passing
+solution: all pages in the page table were marked as present, even though only the vidmem page is supposed to. the rest should be unmapped.
+
+bug: page_table and page_directory arrays seen as undeclared
+solution: instead of putting array declarations in .h (as extern) and .c, put in .h (as extern) and allocate memory for it in x86_desc.S 
+    with the other structures
+
+CHECKPOINT 2 BUGS
+
+bug: system crashes or gives an exception when reaching bottom of screen
+solution: logic to add empty new line had minor typos (putting y instead of x and forgetting parentheses)
+
+bug: backspace on new lines wraps around weirdly
+solution: check for the zero case and use screen_y as the index for last_x
+
+bug: after filesystem was filled, all the data block contents were showing 0s
+solution: when filling the struct, add 1 to inode_count for proper indexing before multiplying by BLOCK_SIZE
+
+bug: read_data not reading bytes properly 
+solution: in the 3 different for loops we had for start data block, middle data block(s) and end data block, our indexing into buf and 
+    data_block was assuming that i was set to 0 at the beginning of the for loop but we were not doing so. still did not fix the issue completely.
+
+bug: read_data not reading bytes properly
+solution: we were using i (iteration var in for loop) and bytes_read (used to keep track of number of bytes read so far) in the indexing in buf 
+    and data_block, so we were incrementing by much more than 1 and going out of bounds very quickly. still had some issues after this.
+
+CHECKPOINT 3 BUGS
+
+bug: pagefaulting when trying to iret to execute shell
+solution: the U/S bit for the user program image page was still set to supervisor mode and not to user mode. we also had to pass in the esp value for 
+    the user stack into edx in the inline asm.
+
+bug: curr_pcb being set to 0 instead of PCB1_POS or PCB2_POS
+solution: in addition to declaring two extern pcb_t pointers for pcb1 and pcb2, we had accidentally redefined them when we placed them in their spot 
+    in memory in create_pcb_x, so we had two versions of the two pcb_t pointers. we ended up moving the address assignment outside the create_pcb_x 
+    function.
+
+bug: address for PCBs incorrect. they were not pointing to the very top of the kernel stack.
+solution: we had done our math incorrectly and added PCB_SIZE to the address we wanted to point to instead of just pointing to 8MB-8kB for one kernel 
+    stack and 8MB-(2*8kB) for the other.
+
+bug: syserr was pagefaulting at err_syscall_num
+solution: when checking the bounds of the system call, we did use less than 0 instead of less than or equal to 0. once we changed jl to jle, all of the 
+    syserr tests passed.
+
+bug: system triggers "segment not found" exception as long as start_process runs in kernel.c 
+solution: PCBs used in start_process probably contain garbage values, so using memsetting them to 0 solves this exception.
+
+CHECKPOINT 4 BUGS
+
+bug: running fish after implementing vidmap resulted in only the I/M appearing and blinking.
+solution: in file_read, we were previously returning 0 on success and -1 on failure, when we should've been returning num_bytes_read, so changing the 
+    return to always return num_bytes_read fixed the bug.
+
+bug: we were not able to create more than 2 shells or run a program from the second shell.
+solution: the issue was that we were only allowing 2 pcbs to be created at the same time/2 programs to be run (but not active) at the same time. instead of 
+    instantiating/pointing to the current pcb in a more manual, there can be only 2 way, we parametrized the whole pcb pointing and creating process to make 
+    as many pcbs as we wanted (meaning as many shells as we want, as many programs as we want). we altered all the old pcb functions and changed our pid_arr 
+    to pcb_arr, so the arr now holds the whole pcb. to change the number of user programs we can run at the same time, all we have to do is change the value 
+    of the MAX_PROC define in pcb.h.
+
+bug: syserr test err_unopened was failing
+solution: in our file_close and dir_close functions, we were checking if fd > 0 as one of the conditions, but we should've been checking if fd >= 2 since file
+    descriptors 0 and 1 are stdin and stdout and shouldn't be closed. changing the condition to fd >= 2 made the syserr tests pass.
+
+bug: syserr test err_open_lots and err_unopened were both failing after running any program which opened the rtc
+solution: in the rtc_close function, instead of doing nothing, we performed the same set of steps as in file_close or dir_close,
+    and taht was enough to fix the issue.
+
+bug: pcbs were being created even when the command was invalid.
+solution: check to make sure the command typed in is an executable using exec_file_check. if it's not it returns -1, and we can return -1 from execute so that 
+    a pcb never gets created.
+
+bug: getargs always went with the first argument and wouldn't error on certain invalid INPUTS
+solution: made arg_buf into a single buffer, so that getargs can handle all arguments at once
+
+bug: all errors say they were returned by exception
+solution: fix the error code checking in halt
+
+CHECKPOINT 5 BUGS
+
+bug: all keyboard buffers clear when hitting enter on any terminal
+solution: have the length and enter flags also be indexed by curr_foreground_terminal
+
+bug: backspace on secondary terminals can overwrite ECE391>
+solution: have char_counter indexed by curr_foreground_terminal
+
+bug: wrap-around backspace is sometimes wrong if one terminal is running pingpong
+solution: have last_x indexed by curr_foreground_terminal
